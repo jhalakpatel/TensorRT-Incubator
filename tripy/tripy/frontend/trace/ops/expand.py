@@ -16,9 +16,9 @@
 #
 
 from dataclasses import dataclass
-from typing import Sequence, Union
+from typing import Optional, Sequence, Union
 
-from tripy import export
+from tripy import export, constraints
 from tripy.utils import Result
 from tripy.common.exception import raise_error
 from tripy.frontend import utils as frontend_utils
@@ -29,6 +29,7 @@ from tripy.frontend.trace.ops.base import BaseTraceOp
 @dataclass(repr=False)
 class Expand(BaseTraceOp):
     output_rank: int
+    output_len: Optional[int] = None  # only used to help with infer_len for a shape input
 
     def infer_dtypes(self):
         self.outputs[0].dtype = self.inputs[0].dtype
@@ -41,14 +42,17 @@ class Expand(BaseTraceOp):
             return Result.ok([0])
         return Result.ok([])
 
+    def infer_len(self):
+        if self.output_len is not None:
+            return [self.output_len]
+        # if we don't have a static output length, we can't infer without evaluating the input
+        return [None]
+
     def infer_rank(self):
         if self.output_rank is None:
-            from tripy.backend.mlir.utils import ShapeContext
-
-            out_shape = ShapeContext().get_shape_of_dynamic_trace_tensor(self.inputs[1])
+            out_shape = op_utils.get_trace_shape(self.inputs[1])
             assert len(out_shape) == 1
             assert out_shape[0] >= 0, f"incorrect shape computation {out_shape}"
-            self.inputs[1].shape = out_shape
             self.output_rank = out_shape[0]
 
         self.outputs[0].rank = self.output_rank
@@ -65,12 +69,19 @@ class Expand(BaseTraceOp):
         )
 
 
-@frontend_utils.convert_inputs_to_tensors(exclude=["input", "output_rank"], shape_argument=["shape"])
-def expand_impl(input: "tripy.Tensor", shape: Sequence, output_rank: int):
-    return Expand.build([input, shape], output_rank)
+@frontend_utils.convert_inputs_to_tensors(exclude=["input", "output_rank", "output_len"], shape_argument=["shape"])
+def expand_impl(input: "tripy.Tensor", shape: Sequence, output_rank: int, output_len: Optional[int] = None):
+    return Expand.build([input, shape], output_rank, output_len)
 
 
 @export.public_api(document_under="operations/functions")
+@constraints.dtype_info(
+    dtype_variables={
+        "T1": ["float32", "float16", "bfloat16", "float8", "int8", "int32", "int64", "bool"],
+        "T2": ["int8", "int32", "int64"],
+    },
+    dtype_constraints={"input": "T1", "sizes": "T2", constraints.RETURN_VALUE: "T1"},
+)
 def expand(input: "tripy.Tensor", sizes: Union["tripy.Shape", Sequence[Union[int, "tripy.Tensor"]]]) -> "tripy.Tensor":
     """
     Returns a new tensor based on the input tensor with singleton dimensions expanded to a larger size.
@@ -83,7 +94,7 @@ def expand(input: "tripy.Tensor", sizes: Union["tripy.Shape", Sequence[Union[int
             are prepended.
 
     Returns:
-        The new tensor of the same data type as this tensor.
+        The new tensor.
 
     .. code-block:: python
         :linenos:
@@ -123,4 +134,9 @@ def expand(input: "tripy.Tensor", sizes: Union["tripy.Shape", Sequence[Union[int
             continue
         out_shape.append(size)
 
-    return expand_impl(input, out_shape, len(sizes))
+    # only used for inferring the length of a shape output (hence, define only in rank-1 case)
+    out_len = None
+    if len(sizes) == 1 and isinstance(out_shape[0], int):
+        out_len = out_shape[0]
+
+    return expand_impl(input, out_shape, len(sizes), out_len)

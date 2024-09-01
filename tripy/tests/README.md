@@ -18,8 +18,38 @@ You can also provide marker arguments to only run specific test cadences
 L0 tests, use:
 
 ```bash
-pytest tests/ -v -m "l0 or not l1"
+pytest tests/ -v -m "not l1 and not manual"
 ```
+
+
+## Profiling
+
+You can profile test runtimes in the development container using the
+`--profile` option, which will generate `pstats` files for each test
+in a `prof/` directory, along with a `combined.prof` file for all the
+tests together.
+
+For example, to profile L0 tests, run:
+
+```bash
+pytest tests/ -v -m "not l1 and not manual" --profile
+```
+
+You can visualize the results using `snakeviz`.
+
+*NOTE: Ensure that you launched the development container with port forwarding,*
+*i.e. the `-p 8080:8080` option.*
+
+For example:
+
+```bash
+snakeviz prof/combined.prof -s --hostname 0.0.0.0
+```
+
+Then, in a browser, navigate to:
+http://localhost:8080/snakeviz/%2Ftripy%2Fprof%2Fcombined.prof
+
+
 
 ## Coverage Reports
 
@@ -71,13 +101,7 @@ def test_really_slow_things():
 
 <!-- Tripy: TEST: IGNORE End -->
 
-The markers we currently support are:
-
-- `l0`: Indicates that the test should be run in each merge request.
-        This marker is applied by default if no other markers are present.
-
-- `l1`: Indicates that the test should be run at a nightly cadence.
-
+Supported markers are documented in [pyproject.toml](../pyproject.toml).
 
 ### Docstring Tests
 

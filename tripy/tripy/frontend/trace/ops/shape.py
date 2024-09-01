@@ -16,10 +16,11 @@
 #
 
 from dataclasses import dataclass
-
 from tripy.frontend.ops.registry import TENSOR_METHOD_REGISTRY
 from tripy.frontend.trace.ops.base import BaseTraceOp
 from tripy.utils import Result
+from tripy import constraints
+from tripy.common.datatype import DATA_TYPES
 
 
 @dataclass(repr=False)
@@ -28,6 +29,9 @@ class Shape(BaseTraceOp):
     # always return a shape
     def infer_shape_output_idxs(self, inputs) -> Result:
         return Result.ok([0])
+
+    def infer_len(self):
+        return [self.inputs[0].rank]
 
     def infer_rank(self):
         assert len(self.inputs) == 1, "ShapeOf operation should have exactly one input!"
@@ -46,7 +50,14 @@ class Shape(BaseTraceOp):
 
 @TENSOR_METHOD_REGISTRY("shape")
 @property
-def shape(self) -> "tripy.Tensor":
+@constraints.dtype_info(
+    dtype_variables={
+        "self_dtype": ["float32", "float16", "bfloat16", "float8", "int8", "int32", "int64", "bool"],
+        "T2": ["int32"],
+    },
+    dtype_constraints={"self": "self_dtype", constraints.RETURN_VALUE: "T2"},
+)
+def shape(self: "tripy.Tensor") -> "tripy.Tensor":
     """
     Represents the shape of the tensor.
 

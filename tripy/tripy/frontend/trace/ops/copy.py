@@ -17,9 +17,10 @@
 
 from dataclasses import dataclass
 
-from tripy import export
+from tripy import export, constraints
 from tripy.common.device import device
 from tripy.frontend.trace.ops.base import BaseTraceOp
+from tripy.frontend.trace.ops.utils import InferLenPolicies
 
 
 @dataclass(repr=False)
@@ -29,6 +30,8 @@ class Copy(BaseTraceOp):
     def infer_devices(self):
         self.outputs[0].device = self.target
 
+    infer_len = InferLenPolicies.infer_same_as_first_input
+
     def to_flat_ir(self, inputs, outputs):
         from tripy.flat_ir.ops import CopyOp
 
@@ -36,16 +39,22 @@ class Copy(BaseTraceOp):
 
 
 @export.public_api(document_under="operations/functions")
+@constraints.dtype_info(
+    dtype_variables={
+        "T1": ["float32", "float16", "bfloat16", "float8", "int8", "int32", "int64", "bool"],
+    },
+    dtype_constraints={"input": "T1", constraints.RETURN_VALUE: "T1"},
+)
 def copy(input: "tripy.Tensor", device: "tripy.device") -> "tripy.Tensor":
     r"""
     Returns a copy of the input tensor on the target device.
 
     Args:
-        input:
+        input: Tensor that will be copied
         device: The target device.
 
     Returns:
-        A copy of this tensor on target device.
+        A copy of input tensor on target device.
 
     .. code-block:: python
         :linenos:
@@ -57,9 +66,5 @@ def copy(input: "tripy.Tensor", device: "tripy.device") -> "tripy.Tensor":
         assert np.array_equal(np.from_dlpack(output), np.array([1, 2], dtype=np.float32))
         assert output.trace_tensor.producer.device.kind == "cpu"
     """
-    from tripy.frontend.trace.ops import Storage
-
-    if isinstance(input.trace_tensor.producer, Storage) and input.trace_tensor.producer.device == device:
-        return input
 
     return Copy.build([input], device)

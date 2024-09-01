@@ -18,11 +18,12 @@
 from dataclasses import dataclass
 from typing import Optional, Sequence, Union
 
-from tripy import export, utils
+from tripy import export, utils, constraints
 from tripy.common import datatype
 from tripy.frontend import utils as frontend_utils
 from tripy.frontend.trace.ops import utils as op_utils
 from tripy.frontend.trace.ops.base import BaseTraceOp
+from tripy.common.exception import raise_error
 
 
 @dataclass(repr=False)
@@ -82,6 +83,10 @@ def iota_impl(
 
 
 @export.public_api(document_under="operations/initializers")
+@constraints.dtype_info(
+    dtype_variables={"T1": ["int32"], "T2": ["float32", "float16", "bfloat16", "float8", "int8", "int32", "bool"]},
+    dtype_constraints={"shape": "T1", "dtype": "T2", constraints.RETURN_VALUE: "T2"},
+)
 def iota(
     shape: Union["tripy.Shape", Sequence[Union[int, "tripy.Tensor"]]],
     dim: int = 0,
@@ -107,11 +112,22 @@ def iota(
 
         assert np.array_equal(cp.from_dlpack(output).get(), np.arange(0, 3, dtype=np.float32))
     """
+    from tripy.common.datatype import int64
+
+    if dtype == int64:
+        raise_error("Known issue with i64. Iota currently does not work with int64 inputs. Issue #116")
     output_rank = len(shape) if isinstance(shape, Sequence) else None
     return iota_impl(shape, dim, dtype, output_rank)
 
 
 @export.public_api(document_under="operations/initializers")
+@constraints.dtype_info(
+    dtype_variables={
+        "T1": ["float32", "float16", "bfloat16", "float8", "int8", "int32", "int64", "bool"],
+        "T2": ["float32", "float16", "bfloat16", "float8", "int8", "int32", "bool"],
+    },
+    dtype_constraints={"input": "T1", "dtype": "T2", constraints.RETURN_VALUE: "T2"},
+)
 def iota_like(input: "tripy.Tensor", dim: int = 0, dtype: Optional[datatype.dtype] = None) -> "tripy.Tensor":
     """
     Returns a tensor of the same shape and data type as the input tensor, with consecutive values
@@ -135,4 +151,8 @@ def iota_like(input: "tripy.Tensor", dim: int = 0, dtype: Optional[datatype.dtyp
 
         assert np.array_equal(cp.from_dlpack(output).get(), np.arange(0, 3, dtype=np.float32))
     """
+    from tripy.common.datatype import int64
+
+    if dtype == int64:
+        raise_error("Known issue with i64. Iota_like currently does not work with int64 inputs. Issue #116")
     return iota_impl(input.shape, dim, utils.default(dtype, input.dtype), input.rank)

@@ -225,20 +225,24 @@ class Executable:
             elif "InternalError: failed to set input shape" in str(err) or "Runtime shape mismatch" in str(err):
                 expected_input_shapes = [info.shape_bounds for info in self.get_input_info()]
                 for tensor, expected_bounds, arg_name in zip(input_tensors, expected_input_shapes, self._arg_names):
-                    shape = tensor.shape.data().data()
+                    shape = tensor.shape.tolist()
                     for i in range(len(shape)):
                         if shape[i] < expected_bounds[i][0] or shape[i] > expected_bounds[i][1]:
+                            min_shape, max_shape = zip(*expected_bounds)
                             raise_error(
                                 f"Unexpected tensor shape.",
                                 [
-                                    f"For parameter `{arg_name}`, expected the tensor shape `{tensor.shape}` to be within bounds for all dimensions. However, dimension {i} has a shape of {shape[i]}, which is not within the expected bounds of {expected_bounds[i]}. Note: The provided argument was: ",
+                                    f"For tensor: `{arg_name}`, expected a shape within the bounds: min={min_shape}, max={max_shape}, but got: {shape}.\n"
+                                    f"Dimension {i} has a shape of {shape[i]}, which is not within the expected bounds of {list(expected_bounds[i])}.\n"
+                                    f"Note: The provided argument was: ",
                                     tensor,
                                 ],
                             )
             raise
 
-        # TODO (#192): avoid get_stack_info in runtime
-        output_tensors = [Tensor(output) for output in executor_outputs]
+        from tripy.utils.stack_info import StackInfo
+
+        output_tensors = [Tensor(output, stack_info=StackInfo([])) for output in executor_outputs]
         if len(output_tensors) == 1:
             output_tensors = output_tensors[0]
         return output_tensors

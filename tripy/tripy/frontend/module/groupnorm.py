@@ -55,12 +55,13 @@ class GroupNorm(Module):
     eps: float
     """A value added to the denominator to prevent division by zero. Defaults to 1e-5."""
 
-    def __init__(self, num_groups: int, num_channels: int, dtype: datatype.dtype = datatype.float32) -> None:
+    def __init__(self, num_groups: int, num_channels: int, dtype: datatype.dtype = datatype.float32, eps: float = 1e-5) -> None:
         """
         Args:
             num_groups: The number of groups to split the channels into.
             num_channels: The number of channels expected in the input.
             dtype: The data type to use for the weight and bias parameters.
+            eps: :math:\epsilon value to prevent division by zero.
 
         .. code-block:: python
             :linenos:
@@ -97,7 +98,7 @@ class GroupNorm(Module):
         # Replace with random weights when #74 is completed.
         self.weight = DefaultParameter((num_channels,), dtype=dtype)
         self.bias = DefaultParameter((num_channels,), dtype=dtype)
-        self.eps = 1e-5
+        self.eps = eps
 
     def __call__(self, x: "tripy.Tensor") -> "tripy.Tensor":
         r"""

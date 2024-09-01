@@ -18,9 +18,10 @@
 from dataclasses import dataclass
 from typing import Optional, Sequence, Union
 
-from tripy import export, utils
+from tripy import export, utils, constraints
 from tripy.common.exception import raise_error
 from tripy.frontend.trace.ops.base import BaseTraceOp
+from tripy.frontend.trace.ops import utils as op_utils
 
 
 @dataclass(repr=False)
@@ -30,6 +31,8 @@ class Flip(BaseTraceOp):
     def infer_rank(self):
         self.outputs[0].rank = self.inputs[0].rank
 
+    infer_len = op_utils.InferLenPolicies.infer_same_as_first_input
+
     def to_flat_ir(self, inputs, outputs):
         from tripy.flat_ir.ops import FlipOp
 
@@ -37,6 +40,12 @@ class Flip(BaseTraceOp):
 
 
 @export.public_api(document_under="operations/functions")
+@constraints.dtype_info(
+    dtype_variables={
+        "T1": ["float32", "float16", "bfloat16", "int32", "bool"],
+    },
+    dtype_constraints={"input": "T1", constraints.RETURN_VALUE: "T1"},
+)
 def flip(input: "tripy.Tensor", dims: Optional[Union[int, Sequence[int]]] = None) -> "tripy.Tensor":
     r"""
     Return a new tensor with the same value as the `input` tensor, with the values in the
@@ -52,7 +61,7 @@ def flip(input: "tripy.Tensor", dims: Optional[Union[int, Sequence[int]]] = None
             If a given dimension is negative, it will be counted backwards from the last dimension.
 
     Returns:
-        A new tensor with the same datatype and values as `input`, with the specified dimensions reversed.
+        A new tensor with the same values as `input`, with the specified dimensions reversed.
 
     .. code-block:: python
         :linenos:
@@ -70,6 +79,10 @@ def flip(input: "tripy.Tensor", dims: Optional[Union[int, Sequence[int]]] = None
         output = tp.flip(input, dims=-1)
         assert cp.array_equal(cp.from_dlpack(output), cp.array([[4, 3, 2, 1, 0], [9, 8, 7, 6, 5]]))
     """
+    from tripy.common.datatype import int64
+
+    if input.dtype == int64:
+        raise_error("Known issue with i64. Flip currently does not work with int64 inputs. Issue #116")
     rank = input.rank
     if dims is None:
         dims = [d for d in range(rank)]

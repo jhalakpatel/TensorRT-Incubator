@@ -24,10 +24,10 @@ import inspect
 import re
 from textwrap import indent
 
-import tripy as tp
 from tests import helper
-from tripy.dtype_info import TYPE_VERIFICATION
 
+import tripy as tp
+from tripy.constraints import TYPE_VERIFICATION, FUNC_W_DOC_VERIF
 
 PARAM_PAT = re.compile(":param .*?:")
 
@@ -82,24 +82,36 @@ version = tp.__version__
 # The full version, including alpha/beta/rc tags.
 release = version
 
-# Style
-pygments_style = "xcode"
-pygments_dark_style = "one-dark"
-
 html_static_path = ["_static"]
 
-html_theme = "sphinx_nefertiti"
+html_theme = "furo"
+
+html_title = f"Tripy {tp.__version__}"
 
 html_theme_options = {
-    "style": "green",
-    "show_powered_by": False,
-    "documentation_font_size": "1.0rem",
-    "monospace_font_size": "0.85rem",
-    "repository_url": "https://github.com/NVIDIA/TensorRT-Incubator",
-    "repository_name": "Tripy",
+    "light_logo": "logo-light-mode.png",
+    "dark_logo": "logo-dark-mode.png",
+    "light_css_variables": {
+        "color-api-pre-name": "#4e9a06",
+        "color-api-name": "#4e9a06",
+        "color-api-background": "#e8e8e8",
+    },
+    "dark_css_variables": {
+        "color-api-background": "#303030",
+    },
+    "footer_icons": [
+        {
+            "name": "GitHub",
+            "url": "https://github.com/NVIDIA/TensorRT-Incubator",
+            "html": """
+                <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 16 16">
+                    <path fill-rule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"></path>
+                </svg>
+            """,
+            "class": "",
+        },
+    ],
 }
-
-html_sidebars = {"**": ["globaltoc.html"]}
 
 # Show source link
 html_show_sourcelink = True
@@ -149,12 +161,10 @@ def process_docstring(app, what, name, obj, options, lines):
                 elif param.kind == inspect.Parameter.VAR_POSITIONAL:
                     pname = "*" + pname
 
-                if pname == "self":
-                    # Don't want a type annotation for the self parameter.
+                if pname != "self" or obj.__qualname__ in FUNC_W_DOC_VERIF:
                     assert (
-                        param.annotation == signature.empty
-                    ), f"Avoid using type annotations for the `self` parameter since this will corrupt the rendered documentation!"
-                else:
+                        pname in documented_args
+                    ), f"Missing documentation for parameter: '{pname}' in: '{obj}'. Please ensure you've included this in the `Args:` section. Note: Documented parameters were: {documented_args} {doc}"
                     assert (
                         pname in documented_args
                     ), f"Missing documentation for parameter: '{pname}' in: '{obj}'. Please ensure you've included this in the `Args:` section. Note: Documented parameters were: {documented_args}"
@@ -167,6 +177,10 @@ def process_docstring(app, what, name, obj, options, lines):
                     assert not inspect.ismodule(
                         param.annotation
                     ), f"Type annotation cannot be a module, but got: '{param.annotation}' for parameter: '{pname}' in: '{obj}'. Please specify a type!"
+                else:
+                    assert (
+                        param.annotation == signature.empty
+                    ), f"Avoid using type annotations for the `self` parameter since this will corrupt the rendered documentation! Note: Documented parameters were: {documented_args} {doc}"
 
             assert signature.return_annotation != signature.empty, (
                 f"Missing return type annotation for: '{obj}'. "
@@ -178,39 +192,50 @@ def process_docstring(app, what, name, obj, options, lines):
                     ":returns:" in doc
                 ), f"For: {obj}, return value is not documented. Please ensure you've included a `Returns:` section"
 
-    # new docstring logic:
-    # first figure out if we should it is the new docstring
-    if name.split(".")[-1] in TYPE_VERIFICATION.keys():
-        cleaned_name = name.split(".")[-1]
+    # New docstring logic:
+    # First figure out if object is using the @constraints.dtype_info decorator.
+    unqual_name = name.split(".")[-1]
+    if unqual_name in TYPE_VERIFICATION.keys():
         add_text_index = -1
         for index, block in enumerate(blocks):
             if re.search(r".. code-block::", block):
-                type_dict = TYPE_VERIFICATION[cleaned_name][1]["types"]
+                type_dict = TYPE_VERIFICATION[unqual_name].dtypes
                 blocks.insert(index, "Type Constraints:")
                 index += 1
+                # Add the dtype constraint name and the dtypes that correlate.
                 for type_name, dt in type_dict.items():
-                    blocks.insert(index, f"    - {type_name}: " + ", ".join(dt))
+                    blocks.insert(
+                        index,
+                        f"    - **{type_name}**: :class:`" + "`, :class:`".join(set(dt)) + "`",
+                    )
                     index += 1
                 blocks.insert(index, "\n")
+                if TYPE_VERIFICATION[unqual_name].dtype_exceptions != []:
+                    # Add the dtype exceptions.
+                    index += 1
+                    blocks.insert(index, "**Unsupported Type Combinations**:")
+                    dtype_exception_text = []
+                    for exception_dict in TYPE_VERIFICATION[unqual_name].dtype_exceptions:
+                        dtype_exception_text.append(
+                            ", ".join([f"{key}: :class:`{val}`" for key, val in exception_dict.items()])
+                        )
+                    dtype_exception_text = "; ".join(dtype_exception_text) + "\n"
+                    index += 1
+                    blocks.insert(index, dtype_exception_text)
                 break
             if re.search(r":param \w+: ", block):
-                add_text_index = re.search(r":param \w+: ", block).span()[1]
                 param_name = re.match(r":param (\w+): ", block).group(1)
-                blocks[index] = (
-                    block[0:add_text_index]
-                    + "[dtype="
-                    + TYPE_VERIFICATION[cleaned_name][2][param_name]
-                    + "] "
-                    + block[add_text_index:]
-                )
+                # Add dtype constraint to start of each parameter description.
+                if TYPE_VERIFICATION[unqual_name].dtype_constraints.get(param_name, None):
+                    add_text_index = re.search(r":param \w+: ", block).span()[1]
+                    blocks[index] = (
+                        f"{block[0:add_text_index]}[dtype=\ **{TYPE_VERIFICATION[unqual_name].dtype_constraints[param_name]}**\ ] {block[add_text_index:]}"
+                    )
             if re.search(r":returns:", block):
                 add_text_index = re.search(r":returns:", block).span()[1] + 1
+                # Add dtype constraint to start of returns description.
                 blocks[index] = (
-                    block[0:add_text_index]
-                    + "[dtype="
-                    + list(TYPE_VERIFICATION[cleaned_name][1]["returns"].values())[0]["dtype"]
-                    + "] "
-                    + block[add_text_index:]
+                    f"{block[0:add_text_index]}[dtype=\ **{TYPE_VERIFICATION[unqual_name].return_dtype}**\ ] {block[add_text_index:]}"
                 )
 
     seen_classes.add(name)

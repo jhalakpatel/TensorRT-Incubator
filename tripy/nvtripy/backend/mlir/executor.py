@@ -31,6 +31,7 @@ from nvtripy.utils.utils import make_tuple
 class Executor:
     def __init__(self, executable: runtime.Executable) -> None:
         self.runtime_client = MLIRRuntimeClient()
+        runtime.GlobalDebug.flag = True
         session_options = runtime.RuntimeSessionOptions(num_devices=1, device_id=0)
         self.session = runtime.RuntimeSession(session_options, executable)
         self.device = self.runtime_client.get_devices()[0]  # Assume a single device is available.
@@ -54,8 +55,11 @@ class Executor:
                     details=[f"Tensor was: ", inp, "Error was: ", memref.error_details],
                 )
             in_args.append(memref)
+            # Print detailed information about the memref using updated APIs
+            print(f"MemRef Information: Name: {inp.name}, Pointer: {hex(memref.ptr)}, Shape: {memref.shape}, Strides: {memref.strides}, Dtype: {memref.dtype}, Address Space: {memref.address_space}")
 
         # Execute and populate device pointers.
+        print("Executing function 'main' with provided inputs.")
         outputs = self.session.execute_function(
             "main", in_args=in_args, stream=self.stream._active_cuda_stream, client=self.runtime_client
         )

@@ -61,6 +61,7 @@ class ImageEncoder(tp.Module):
             features_pos = self.forward(sample)
         for i in range(len(features_pos)):
             features_pos[i] = torch.from_dlpack(features_pos[i])
+            print(f"from_dlpack consumed: features_pos[{i}], populated: features_pos[{i}]")
         n = len(self.neck.backbone_channel_list)
         features = list(features_pos[:n])
         pos = list(features_pos[n:])

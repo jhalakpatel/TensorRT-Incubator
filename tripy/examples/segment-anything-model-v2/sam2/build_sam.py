@@ -269,6 +269,8 @@ class SAM2ModelCache:
         """Get a cached compiled model or compile and cache it if not exists."""
         if not comp_info["enabled"]:
             return None
+        
+        return comp_info["model"]
 
         # Check if already in memory cache
         if comp_name in self.cached_models:
@@ -290,7 +292,7 @@ class SAM2ModelCache:
 
         # Cache the compiled model in memory
         self.cached_models[comp_name] = compiled_model
-        return compiled_model
+        return comp_info["model"]
 
 
 def build_sam2_base(

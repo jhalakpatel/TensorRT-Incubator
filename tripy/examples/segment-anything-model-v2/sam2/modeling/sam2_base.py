@@ -357,9 +357,13 @@ class SAM2Base(torch.nn.Module):
                 high_res_features_2=hres_2,
             )
 
+        print("Converting low_res_multimasks from DLPack to torch tensor: from_dlpack consumed: low_res_multimasks, populated: low_res_multimasks")
         low_res_multimasks = torch.from_dlpack(low_res_multimasks).float()
+        print("Converting ious from DLPack to torch tensor: from_dlpack consumed: ious, populated: ious")
         ious = torch.from_dlpack(ious).float()
+        print("Converting sam_output_tokens from DLPack to torch tensor: from_dlpack consumed: sam_output_tokens, populated: sam_output_tokens")
         sam_output_tokens = torch.from_dlpack(sam_output_tokens).float()
+        print("Converting object_score_logits from DLPack to torch tensor: from_dlpack consumed: object_score_logits, populated: object_score_logits")
         object_score_logits = torch.from_dlpack(object_score_logits).float()
 
         if self.pred_obj_scores:
@@ -490,7 +494,9 @@ class SAM2Base(torch.nn.Module):
                 conv_s0_in = tp.Tensor(conv_s0_in.half())
                 conv_s1_in = tp.Tensor(conv_s1_in.half())
 
+            print("Converting conv_s0_in from DLPack to torch tensor: from_dlpack consumed: conv_s0_in, populated: backbone_out['backbone_fpn'][0]")
             backbone_out["backbone_fpn"][0] = torch.from_dlpack(self.sam_mask_decoder.conv_s0(conv_s0_in))
+            print("Converting conv_s1_in from DLPack to torch tensor: from_dlpack consumed: conv_s1_in, populated: backbone_out['backbone_fpn'][1]")
             backbone_out["backbone_fpn"][1] = torch.from_dlpack(self.sam_mask_decoder.conv_s1(conv_s1_in))
 
         return backbone_out
@@ -665,7 +671,14 @@ class SAM2Base(torch.nn.Module):
         memory = torch.cat(to_cat_memory, dim=0)
         memory_pos_embed = torch.cat(to_cat_memory_pos_embed, dim=0)
         if isinstance(self.memory_attention, tp.Module) or isinstance(self.memory_attention, tp.Executable):
+            print("Using memory_attention as tp.Module or tp.Executable")
             fake_obj_ptrs = torch.ones((num_obj_ptr_tokens,), dtype=torch.int32)
+            print("Calling memory_attention with inputs:")
+            print(f"current_vision_feats[0]: {current_vision_feats[0].shape}")
+            print(f"memory: {memory.shape}")
+            print(f"current_vision_pos_embeds[0]: {current_vision_pos_embeds[0].shape}")
+            print(f"memory_pos_embed: {memory_pos_embed.shape}")
+            print(f"num_obj_ptr_tokens: {num_obj_ptr_tokens}")
             pix_feat_with_mem = self.memory_attention(
                 curr=tp.Tensor(current_vision_feats[0].half().contiguous()),
                 memory=tp.Tensor(memory.half().contiguous()),
@@ -674,6 +687,13 @@ class SAM2Base(torch.nn.Module):
                 num_obj_ptr_tokens=tp.Tensor(fake_obj_ptrs.contiguous()),
             )
         else:
+            print("Using memory_attention as default")
+            print("Calling memory_attention with inputs:")
+            print(f"current_vision_feats[0]: {current_vision_feats[0].shape}")
+            print(f"memory: {memory.shape}")
+            print(f"current_vision_pos_embeds[0]: {current_vision_pos_embeds[0].shape}")
+            print(f"memory_pos_embed: {memory_pos_embed.shape}")
+            print(f"num_obj_ptr_tokens: {num_obj_ptr_tokens}")
             pix_feat_with_mem = self.memory_attention(
                 curr=current_vision_feats[0],
                 curr_pos=current_vision_pos_embeds[0],
@@ -681,6 +701,7 @@ class SAM2Base(torch.nn.Module):
                 memory_pos=memory_pos_embed,
                 num_obj_ptr_tokens=num_obj_ptr_tokens,
             )
+        print("Converting pix_feat_with_mem from DLPack to torch tensor: from_dlpack consumed: pix_feat_with_mem, populated: pix_feat_with_mem")
         pix_feat_with_mem = torch.from_dlpack(pix_feat_with_mem)
         # reshape the output (HW)BC => BCHW
         pix_feat_with_mem = pix_feat_with_mem.permute(1, 2, 0).view(B, C, H, W)
@@ -717,10 +738,13 @@ class SAM2Base(torch.nn.Module):
         if self.sigmoid_bias_for_mem_enc != 0.0:
             mask_for_mem = mask_for_mem + self.sigmoid_bias_for_mem_enc
 
+        print("encode_new_memory")
         maskmem_features, maskmem_pos_enc = self.memory_encoder(
             tp.Tensor(pix_feat.float().contiguous()), tp.Tensor(mask_for_mem.contiguous())
         )  # sigmoid already applied
+        print("Converting maskmem_features from DLPack to torch tensor: from_dlpack consumed: maskmem_features, populated: maskmem_features")
         maskmem_features = torch.from_dlpack(maskmem_features)
+        print("Converting maskmem_pos_enc from DLPack to torch tensor: from_dlpack consumed: maskmem_pos_enc, populated: maskmem_pos_enc")
         maskmem_pos_enc = [torch.from_dlpack(maskmem_pos_enc)]
 
         return maskmem_features, maskmem_pos_enc
@@ -746,6 +770,7 @@ class SAM2Base(torch.nn.Module):
         # The previously predicted SAM mask logits (which can be fed together with new clicks in demo).
         prev_sam_mask_logits=None,
     ):
+        print("track_step", frame_idx)
         current_out = {"point_inputs": point_inputs, "mask_inputs": mask_inputs}
         # High-resolution feature maps for the SAM head, reshape (HW)BC => BCHW
         if len(current_vision_feats) > 1:

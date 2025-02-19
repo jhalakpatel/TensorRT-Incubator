@@ -294,7 +294,9 @@ class Hiera(tp.Module):
 
         h, w = hw
         window_embed = torch.from_dlpack(self.pos_embed_window)
+        print("from_dlpack consumed: self.pos_embed_window, populated: window_embed")
         pos_embed = F.interpolate(torch.from_dlpack(self.pos_embed), size=(h, w), mode="bicubic")
+        print("from_dlpack consumed: self.pos_embed, populated: pos_embed")
         pos_embed = pos_embed + window_embed.tile([x // y for x, y in zip(pos_embed.shape, window_embed.shape)])
         pos_embed = pos_embed.permute(0, 2, 3, 1)
         self.pos_embed_torch = pos_embed.contiguous()

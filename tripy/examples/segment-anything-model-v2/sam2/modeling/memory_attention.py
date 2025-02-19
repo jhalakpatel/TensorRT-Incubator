@@ -192,25 +192,29 @@ class MemoryAttention(tp.Module):
         memory_pos: Optional[tp.Tensor] = None,  # pos_enc for cross-attention inputs
         num_obj_ptr_tokens: Optional[tp.Tensor] = None,  # number of object pointer *tokens*
     ):
+        print("Entering __call__ function")
 
         num_obj_ptr_tokens = num_obj_ptr_tokens.shape[0]
         output = curr
         if self.pos_enc_at_input and curr_pos is not None:
             output = output + 0.1 * curr_pos
+            print("Applied positional encoding to input")
 
         if self.batch_first:
             # Convert to batch first
             output = tp.transpose(output, 0, 1)
             memory = tp.transpose(memory, 0, 1)
+            print("Converted to batch first format")
             if curr_pos is not None:
                 curr_pos = tp.transpose(curr_pos, 0, 1)
             if memory_pos is not None:
                 memory_pos = tp.transpose(memory_pos, 0, 1)
 
-        for layer in self.layers:
+        for i, layer in enumerate(self.layers):
             kwds = {}
             if isinstance(layer.cross_attn_image, RoPEAttention):
                 kwds = {"num_k_exclude_rope": num_obj_ptr_tokens}
+                print(f"Layer {i}: Using RoPEAttention with num_k_exclude_rope")
 
             output = layer(
                 tgt=output,
@@ -219,11 +223,15 @@ class MemoryAttention(tp.Module):
                 query_pos=curr_pos,
                 **kwds,
             )
+            print(f"Layer {i}: Output shape after layer processing")
 
         normed_output = tp.cast(self.norm(tp.cast(output, self.norm.dtype)), self.dtype)
+        print("Applied layer normalization")
 
         if self.batch_first:
             # Convert back to seq first
             normed_output = tp.transpose(normed_output, 0, 1)
+            print("Converted back to sequence first format")
 
+        print("Exiting __call__ function")
         return normed_output
